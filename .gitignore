@@ -1,0 +1,17 @@
+# Python virtual environment
+venv/
+
+# Python-generated files
+__pycache__/
+*.pyc
+
+# Local configuration and secrets
+.env
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime logs
+*.log
