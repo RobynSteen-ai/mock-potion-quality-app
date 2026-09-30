@@ -1,0 +1,77 @@
+---
+- name: Deploy and verify the Potion Quality application
+  hosts: production
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: Apply the Kubernetes Deployment manifest
+      ansible.builtin.command:
+        cmd: kubectl apply -f {{ playbook_dir }}/deployment.yml
+      register: deployment_apply
+      changed_when: >
+        'created' in deployment_apply.stdout or
+        'configured' in deployment_apply.stdout
+
+    - name: Apply the Kubernetes Service manifest
+      ansible.builtin.command:
+        cmd: kubectl apply -f {{ playbook_dir }}/service.yml
+      register: service_apply
+      changed_when: >
+        'created' in service_apply.stdout or
+        'configured' in service_apply.stdout
+
+    - name: Wait for the deployment rollout to complete
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/potion-quality-app --timeout=300s
+      changed_when: false
+
+    - name: Obtain pod information
+      ansible.builtin.command:
+        cmd: kubectl get pods -o wide
+      register: pod_information
+      changed_when: false
+
+    - name: Display pod information
+      ansible.builtin.debug:
+        var: pod_information.stdout_lines
+
+    - name: Obtain deployment information
+      ansible.builtin.command:
+        cmd: kubectl get deployment potion-quality-app
+      register: deployment_information
+      changed_when: false
+
+    - name: Display deployment information
+      ansible.builtin.debug:
+        var: deployment_information.stdout_lines
+
+    - name: Obtain Service information
+      ansible.builtin.command:
+        cmd: kubectl get service potion-quality-service
+      register: service_information
+      changed_when: false
+
+    - name: Display Service information
+      ansible.builtin.debug:
+        var: service_information.stdout_lines
+
+    - name: Obtain the Minikube IP address
+      ansible.builtin.command:
+        cmd: minikube ip
+      register: minikube_ip
+      changed_when: false
+
+    - name: Verify the deployed application's health endpoint
+      ansible.builtin.uri:
+        url: "http://{{ minikube_ip.stdout }}:30050/health"
+        status_code: 200
+        return_content: true
+      register: service_health
+      retries: 12
+      delay: 5
+      until: service_health.status == 200
+
+    - name: Display the application health response
+      ansible.builtin.debug:
+        msg: "Kubernetes service response: {{ service_health.content }}"

@@ -1,0 +1,43 @@
+---
+- name: Start and verify Minikube
+  hosts: production
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: Check the current Minikube status
+      ansible.builtin.command:
+        cmd: minikube status
+      register: existing_minikube
+      changed_when: false
+      failed_when: false
+
+    - name: Start Minikube using the Docker driver
+      ansible.builtin.command:
+        cmd: minikube start --driver=docker --cpus=2 --memory=4096mb
+      when: existing_minikube.rc != 0
+
+    - name: Wait for the Minikube node to become ready
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=Ready node/minikube --timeout=300s
+      changed_when: false
+
+    - name: Obtain the final Minikube status
+      ansible.builtin.command:
+        cmd: minikube status
+      register: final_minikube
+      changed_when: false
+
+    - name: Display the final Minikube status
+      ansible.builtin.debug:
+        var: final_minikube.stdout_lines
+
+    - name: Obtain Kubernetes node information
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o wide
+      register: kubernetes_nodes
+      changed_when: false
+
+    - name: Display Kubernetes node information
+      ansible.builtin.debug:
+        var: kubernetes_nodes.stdout_lines
