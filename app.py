@@ -6,8 +6,11 @@ app = Flask(__name__)
 def assess_potion(ph, clarity):
     """Classify a potion using its pH and visual clarity."""
     ph = float(ph)
-    clarity = clarity.strip().lower()
 
+    if not isinstance(clarity, str):
+    	raise ValueError("Clarity must be text: clear or cloudy")
+
+    clarity = clarity.strip().lower()
     if not 0 <= ph <= 14:
         raise ValueError("pH must be between 0 and 14")
 
@@ -51,7 +54,6 @@ def assess():
 
     except (KeyError, TypeError, ValueError) as error:
         return jsonify(error=str(error)), 400
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
