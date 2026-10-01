@@ -1,0 +1,79 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows:
+      - CI Pipeline
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: robynsteen/mock-potion-quality-app
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: [self-hosted, production]
+
+    steps:
+      - name: Check out the passed build
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Verify Kubernetes cluster
+        run: |
+          minikube status
+          kubectl get nodes
+
+      - name: Apply Kubernetes YAML manifests
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          sed -i \
+            "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" \
+            deployment.yml
+
+          grep 'image:' deployment.yml
+          kubectl apply -f deployment.yml
+          kubectl apply -f service.yml
+
+      - name: Wait for rolling deployment
+        run: |
+          kubectl rollout status \
+            deployment/potion-quality-app \
+            --timeout=300s
+
+      - name: Display deployed resources
+        run: |
+          kubectl get deployment potion-quality-app
+          kubectl get pods -l app=potion-quality-app -o wide
+          kubectl get service potion-quality-service
+          kubectl get deployment potion-quality-app \
+            -o jsonpath='{.spec.template.spec.containers[0].image}'
+          echo
+
+      - name: Verify application health
+        run: |
+          SERVICE_URL="http://$(minikube ip):30050/health"
+          echo "Testing ${SERVICE_URL}"
+
+          curl \
+            --fail \
+            --show-error \
+            --retry 12 \
+            --retry-delay 5 \
+            --retry-connrefused \
+            "${SERVICE_URL}"
+
+          echo
