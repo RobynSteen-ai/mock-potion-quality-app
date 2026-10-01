@@ -1,0 +1,84 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: robynsteen/mock-potion-quality-app
+
+jobs:
+  ci:
+    name: Test, build and publish
+    runs-on: [self-hosted, build]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Flask and project dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt
+
+      - name: Run smoke tests
+        run: .venv/bin/python smoke_test.py -v
+
+      - name: Run unit tests
+        run: .venv/bin/python unit_test.py -v
+
+      - name: Run integration tests
+        run: .venv/bin/python integration_test.py -v
+
+      - name: Run existing regression tests
+        run: .venv/bin/python -m unittest discover -s tests -v
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t "$IMAGE_NAME:${GITHUB_SHA}" \
+            -t "$IMAGE_NAME:latest" \
+            .
+
+      - name: Verify Docker container can launch
+        run: |
+          docker run -d \
+            --name potion-quality-ci-test \
+            "$IMAGE_NAME:${GITHUB_SHA}"
+
+          sleep 5
+          test "$(docker inspect -f '{{.State.Running}}' potion-quality-ci-test)" = "true"
+          docker logs potion-quality-ci-test
+
+      - name: Remove test container
+        if: always()
+        run: docker rm -f potion-quality-ci-test || true
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Docker image
+        run: |
+          docker push "$IMAGE_NAME:${GITHUB_SHA}"
+          docker push "$IMAGE_NAME:latest"
+
+      - name: Clean up local Docker images
+        if: always()
+        run: |
+          docker image rm \
+            "$IMAGE_NAME:${GITHUB_SHA}" \
+            "$IMAGE_NAME:latest" || true
+          docker image prune -f
