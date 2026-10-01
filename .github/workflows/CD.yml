@@ -57,7 +57,7 @@ jobs:
       - name: Display deployed resources
         run: |
           kubectl get deployment potion-quality-app
-          kubectl get pods -l app=potion-quality-app -o wide
+          kubectl get pods -l app=potion-quality -o wide
           kubectl get service potion-quality-service
           kubectl get deployment potion-quality-app \
             -o jsonpath='{.spec.template.spec.containers[0].image}'
